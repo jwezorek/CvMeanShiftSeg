@@ -1,6 +1,8 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include "MeanShiftSegmentation.hpp"
+#include <vector>
+#include <stdexcept>
 
 /*
 	This implementation of mean shift segmentation was extracted whole cloth
@@ -48,7 +50,7 @@ namespace {
 
 		float_img *= 1.0f / 255.0f;
 		cv::Mat luv;
-		cv::cvtColor(float_img, luv, CV_BGR2Luv);
+		cv::cvtColor(float_img, luv, cv::COLOR_BGR2Luv);
 
 		return luv;
 	}
@@ -56,7 +58,7 @@ namespace {
 	cv::Mat LuvToRgb(const cv::Mat& img)
 	{
 		cv::Mat rgb_float;
-		cv::cvtColor(img, rgb_float, CV_Luv2BGR);
+		cv::cvtColor(img, rgb_float, cv::COLOR_Luv2BGR);
 		rgb_float *= 255.0f;
 
 		cv::Mat output;
@@ -67,6 +69,7 @@ namespace {
 
 	class MeanShiftSegmentationImpl : public MeanShiftSegmentation {
 	private:
+		int connectivity_;
 		float sigma_r_;
 		int sigma_s_;
 		bool optimized_;
@@ -177,7 +180,8 @@ namespace {
 
 				image = cv::Mat(inp.rows, inp.cols, inp.type());
 
-				lbls.create(inp.rows, inp.cols, (N == 3) ? CV_32SC3 : CV_32SC1);
+				//lbls.create(inp.rows, inp.cols, (N == 3) ? CV_32SC3 : CV_32SC1);
+				lbls.create(inp.rows, inp.cols, CV_32SC1);
 				labels = lbls.getMat();
 
 				modes.resize(L*(N + 2));
@@ -1315,7 +1319,7 @@ namespace {
 			}
 		}
 
-		void Fill(int regionLoc, int label, int neigh[], MeanShiftSegmentationState& state)
+		void Fill(int regionLoc, int label, const std::vector<int>& neigh, MeanShiftSegmentationState& state)
 		{
 			float* LUV_data = state.image.ptr<float>();
 			int* labels = state.labels.ptr<int>();
@@ -1346,7 +1350,7 @@ namespace {
 				//check the eight connected neighbors at regionLoc -
 				//if a pixel has similar color to that located at 
 				//regionLoc then declare it as part of this region
-				for (i = 0; i < 8; i++)
+				for (i = 0; i < static_cast<int>(neigh.size()); i++)  
 				{
 					//check bounds and if neighbor has been already labeled
 					neighLoc = regionLoc + neigh[i];
@@ -1393,7 +1397,7 @@ namespace {
 
 		}
 
-		void Connect(MeanShiftSegmentationState& state)
+		void Connect(MeanShiftSegmentationState& state, int connectivity)
 		{
 			int N = state.image.channels();
 			int width = state.image.cols;
@@ -1402,15 +1406,24 @@ namespace {
 			float* LUV_data = state.image.ptr<float>();
 
 			//define eight connected neighbors
-			int neigh[8];
-			neigh[0] = 1;
-			neigh[1] = 1 - width;
-			neigh[2] = -width;
-			neigh[3] = -(1 + width);
-			neigh[4] = -1;
-			neigh[5] = width - 1;
-			neigh[6] = width;
-			neigh[7] = width + 1;
+			std::vector<int> neigh;
+			if (connectivity == 8) {
+				neigh.resize(8);
+				neigh[0] = 1;
+				neigh[1] = 1 - width;
+				neigh[2] = -width;
+				neigh[3] = -(1 + width);
+				neigh[4] = -1;
+				neigh[5] = width - 1;
+				neigh[6] = width;
+				neigh[7] = width + 1;
+			} else {
+				neigh.resize(4);
+				neigh[0] = 1;
+				neigh[1] = -width;
+				neigh[2] = -1;
+				neigh[3] = width;
+			}
 
 			//initialize labels and modePointCounts
 			int i;
@@ -1980,12 +1993,23 @@ namespace {
 			else
 				NewOptimizedFilter1(luv, state);
 
-			Connect(state);
+			Connect(state, connectivity_);
 			FuseRegions(state);
 
 			segmented.create(src.rows, src.cols, inp.type());
 			auto mat = segmented.getMat();
 			LuvToRgb(state.image).copyTo(mat);
+		}
+
+		virtual void setConnectivity(int n) override {
+			if (n != 8 && n != 4) {
+				throw std::runtime_error("illegal connectivity param. must be 4 or 8.");
+			}
+			connectivity_ = n;
+		}
+
+		virtual int getConnectivity() const override {
+			return connectivity_;
 		}
 
 		virtual void setSigmaS(int val) override
@@ -2030,7 +2054,7 @@ namespace {
 	};
 }
 
-cv::Ptr<MeanShiftSegmentation> createMeanShiftSegmentation(int sigmaS, float sigmaR, int min_size, bool optimized)
+cv::Ptr<MeanShiftSegmentation> createMeanShiftSegmentation(int sigmaS, float sigmaR, int min_size, int connectivity, bool optimized)
 {
 	cv::Ptr<MeanShiftSegmentation> mean_shift_seg = cv::makePtr<MeanShiftSegmentationImpl>();
 
@@ -2038,6 +2062,7 @@ cv::Ptr<MeanShiftSegmentation> createMeanShiftSegmentation(int sigmaS, float sig
 	mean_shift_seg->setSigmaR(sigmaR);
 	mean_shift_seg->setMinSize(min_size);
 	mean_shift_seg->setOptimized(optimized);
+	mean_shift_seg->setConnectivity(connectivity);
 
 	return mean_shift_seg;
 }

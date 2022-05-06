@@ -20,6 +20,9 @@ public:
 	virtual void setOptimized(bool val) = 0;
 	virtual bool getOptimized() const = 0;
 
+	virtual void setConnectivity(int n) = 0;
+	virtual int getConnectivity() const = 0;
+
 };
 
-cv::Ptr<MeanShiftSegmentation> createMeanShiftSegmentation(int sigmaS, float sigmaR, int minSize, bool optimized);
+cv::Ptr<MeanShiftSegmentation> createMeanShiftSegmentation(int sigmaS, float sigmaR, int minSize, int connectivity, bool optimized);

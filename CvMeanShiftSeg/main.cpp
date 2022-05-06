@@ -12,7 +12,7 @@ int main(int argc, char **argv)
 
 	cv::Mat output;
 	cv::Mat labels;
-	auto mss = createMeanShiftSegmentation(8, 5.5f, 20, true);
+	auto mss = createMeanShiftSegmentation(8, 5.5f, 20, 4, true);
 	mss->processImage(img, output, labels);
 
 	cv::imshow("segmented output", output);
